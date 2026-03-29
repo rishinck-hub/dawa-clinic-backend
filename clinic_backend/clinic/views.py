@@ -7,6 +7,18 @@ from .models import Doctor, Medicine, Patient, Consultation, ConsultationMedicin
 from .serializers import DoctorSerializer, MedicineSerializer, PatientSerializer, ConsultationSerializer
 
 
+def _extract_patient_id(search_query):
+    if not search_query:
+        return None
+    query = search_query.strip().upper()
+    if query.startswith("PL00"):
+        code_part = query[4:]
+        if code_part.isdigit():
+            return int(code_part)
+    if query.isdigit():
+        return int(query)
+    return None
+
 
 class SecureTestView(APIView):
     permission_classes = [IsAuthenticated]
@@ -146,13 +158,15 @@ class PatientListCreateView(APIView):
         
         patients = Patient.objects.filter(created_by=doctor)
         
-        # Search by name, phone, or ID
+        # Search by name, phone, ID, or patient code (PL00<id>)
         search_query = request.GET.get('search', '').strip()
         if search_query:
             from django.db.models import Q
-            patients = patients.filter(
-                Q(name__icontains=search_query) | Q(phone__icontains=search_query) | Q(id__icontains=search_query)
-            )
+            search_q = Q(name__icontains=search_query) | Q(phone__icontains=search_query)
+            patient_id = _extract_patient_id(search_query)
+            if patient_id is not None:
+                search_q = search_q | Q(id=patient_id)
+            patients = patients.filter(search_q)
         
         serializer = PatientSerializer(patients, many=True)
         return Response(serializer.data)
@@ -293,14 +307,36 @@ class ConsultationHistoryView(APIView):
             return Response([])
         
         query = request.GET.get('search', '')
-        patients = Patient.objects.filter(
-            created_by=doctor,
-            name__icontains=query
-        ) | Patient.objects.filter(
-            created_by=doctor,
-            phone__icontains=query
-        )
+        from django.db.models import Q
+        search_q = Q(created_by=doctor)
+        if query:
+            patient_id = _extract_patient_id(query)
+            patient_filter = Q(name__icontains=query) | Q(phone__icontains=query)
+            if patient_id is not None:
+                patient_filter = patient_filter | Q(id=patient_id)
+            search_q = search_q & patient_filter
+
+        patients = Patient.objects.filter(search_q)
 
         consultations = Consultation.objects.filter(patient__in=patients)
+        serializer = ConsultationSerializer(consultations, many=True)
+        return Response(serializer.data)
+
+
+class PatientConsultationHistoryView(APIView):
+    permission_classes = [IsAuthenticated, IsDoctor]
+
+    def get(self, request, pk):
+        try:
+            doctor = Doctor.objects.get(user=request.user)
+        except Doctor.DoesNotExist:
+            return Response({"error": "Doctor profile not found"}, status=400)
+
+        try:
+            patient = Patient.objects.get(pk=pk, created_by=doctor)
+        except Patient.DoesNotExist:
+            return Response({"error": "Patient not found"}, status=404)
+
+        consultations = Consultation.objects.filter(patient=patient).order_by('-date')
         serializer = ConsultationSerializer(consultations, many=True)
         return Response(serializer.data)

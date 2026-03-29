@@ -74,9 +74,20 @@ class MedicineSerializer(serializers.ModelSerializer):
 
 
 class PatientSerializer(serializers.ModelSerializer):
+    patient_code = serializers.CharField(read_only=True)
+
     class Meta:
         model = Patient
-        fields = '__all__'
+        fields = [
+            'id',
+            'patient_code',
+            'name',
+            'phone',
+            'age',
+            'gender',
+            'address',
+            'created_by',
+        ]
         read_only_fields = ['created_by']
 
 
@@ -99,10 +110,19 @@ class ConsultationSerializer(serializers.ModelSerializer):
         read_only=True
     )
     patient_name = serializers.CharField(source='patient.name', read_only=True)
+    patient_code = serializers.CharField(source='patient.patient_code', read_only=True)
 
     class Meta:
         model = Consultation
-        fields = ['id', 'patient', 'patient_name', 'notes', 'date', 'medicines']
+        fields = [
+            'id',
+            'patient',
+            'patient_name',
+            'patient_code',
+            'notes',
+            'date',
+            'medicines',
+        ]
 
 
 

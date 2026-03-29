@@ -22,6 +22,12 @@ class Patient(models.Model):
     address = models.TextField(null=True, blank=True)
     created_by = models.ForeignKey(Doctor, on_delete=models.CASCADE)
 
+    @property
+    def patient_code(self):
+        if self.id is None:
+            return ""
+        return f"PL00{self.id}"
+
     def __str__(self):
         return f"{self.name} - {self.phone}"
 
